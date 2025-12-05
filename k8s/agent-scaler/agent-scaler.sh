@@ -29,6 +29,10 @@ namespace=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
 # Its 'joshua-rhel9-agent' for rockylinux9 instances.
 export AGENT_NAME=${AGENT_NAME:-"joshua-agent"}
 
+# Scaling configuration for large test suites
+# For very large queues (>1000 ensembles), scale more aggressively
+# For smaller queues, use normal scaling to be fair to other users
+
 # if AGENT_TAG is not set through --build-arg,
 # use the default agent image and tag
 export AGENT_TAG=${AGENT_TAG:-"foundationdb/joshua-agent:latest"}
@@ -120,14 +124,30 @@ while true; do
         fi
 
         # 3. The number of new jobs cannot exceed the per-cycle limit, if one is set.
+        # Simple scaling: 1000 jobs for very large queues, 100 for smaller queues
         if [ -n "${MAX_NEW_JOBS}" ]; then
-            if [ "${num_to_attempt}" -gt "${MAX_NEW_JOBS}" ]; then
-                num_to_attempt=${MAX_NEW_JOBS}
+            if [ "${num_ensembles}" -gt 1000 ]; then
+                # For very large queues (>1000), allow up to 1000 jobs per cycle
+                # This helps clear large test suites quickly while being fair
+                large_queue_limit=1000
+                if [ "${num_to_attempt}" -gt "${large_queue_limit}" ]; then
+                    num_to_attempt=${large_queue_limit}
+                fi
+            else
+                # For smaller queues, use normal MAX_NEW_JOBS to be fair to other users
+                if [ "${num_to_attempt}" -gt "${MAX_NEW_JOBS}" ]; then
+                    num_to_attempt=${MAX_NEW_JOBS}
+                fi
             fi
         fi
 
         if [ "${num_to_attempt}" -gt 0 ]; then
             new_jobs=${num_to_attempt}
+            if [ "${num_ensembles}" -gt 1000 ]; then
+                echo "Large queue detected: ${num_ensembles} ensembles, targeting ${new_jobs} new jobs (large queue mode)"
+            else
+                echo "Normal scaling: ${num_ensembles} ensembles, targeting ${new_jobs} new jobs"
+            fi
         fi
 
         idx=0
@@ -151,7 +171,7 @@ while true; do
                     fi
                 done
                 # /tmp/joshua-agent.yaml contains up to $batch_size entries
-                echo "Starting a batch of ${i} jobs"
+                echo "Starting ${i} jobs"
                 kubectl apply -f /tmp/joshua-agent.yaml -n "${namespace}"
             done
         fi
@@ -159,8 +179,11 @@ while true; do
     # Standardized log message based on new_jobs calculated for this iteration for this agent type
     echo "${new_jobs} jobs of type ${AGENT_NAME} were targeted for starting in this iteration."
 
-    # check every check_delay seconds
-    sleep "${check_delay}"
+    # Use consistent check delay for all queue sizes
+    adaptive_delay=${check_delay}
+    
+    # check every adaptive_delay seconds
+    sleep "${adaptive_delay}"
 done
 exit 0
 
