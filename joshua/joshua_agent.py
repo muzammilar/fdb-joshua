@@ -592,12 +592,21 @@ class AsyncEnsemble:
                     break
                 if timeout_time and time.time() > timeout_time:
                     log("<timed out>")
-                    process.kill()
-                    # Get any remaining output after kill
-                    remaining_out, remaining_err = process.communicate()
-                    # Combine partial output from timeout exception + remaining after kill
+                    # First try graceful shutdown with SIGTERM - gives Python's finally block time to execute
+                    process.terminate()
+                    try:
+                        # Wait up to 5 seconds for graceful shutdown
+                        remaining_out, remaining_err = process.communicate(timeout=5)
+                        log("Process terminated gracefully after SIGTERM")
+                    except subprocess.TimeoutExpired:
+                        # Still running after SIGTERM - force kill with SIGKILL
+                        log("Process didn't terminate after SIGTERM - sending SIGKILL")
+                        process.kill()
+                        remaining_out, remaining_err = process.communicate()
+
+                    # Combine partial output from timeout exception + remaining after terminate/kill
                     output = (timeout_ex.stdout or b"") + (remaining_out or b"")
-                    log(f"Captured {len(output)} bytes on timeout (timeout_partial={len(timeout_ex.stdout or b'')}, post_kill={len(remaining_out or b'')})")
+                    log(f"Captured {len(output)} bytes on timeout (timeout_partial={len(timeout_ex.stdout or b'')}, post_terminate={len(remaining_out or b'')})")
 
                     # If we got NO output at all (hung before test started), generate fallback XML
                     if len(output) == 0 or output.strip() == b"":
