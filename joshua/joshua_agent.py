@@ -581,16 +581,39 @@ class AsyncEnsemble:
                 # output = output.decode('utf-8')
 
                 break
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as timeout_ex:
+                # TimeoutExpired exception contains partial output
+                # captured before timeout. We must preserve this!
                 if self._cancelled():
                     log("<cancelled>")
                     retcode = -1
-                    output = b""
+                    # Preserve any stdout captured before cancellation
+                    output = timeout_ex.stdout if timeout_ex.stdout else b""
                     break
                 if timeout_time and time.time() > timeout_time:
                     log("<timed out>")
+                    process.kill()
+                    # Get any remaining output after kill
+                    remaining_out, remaining_err = process.communicate()
+                    # Combine partial output from timeout exception + remaining after kill
+                    output = (timeout_ex.stdout or b"") + (remaining_out or b"")
+                    log(f"Captured {len(output)} bytes on timeout (timeout_partial={len(timeout_ex.stdout or b'')}, post_kill={len(remaining_out or b'')})")
+
+                    # If we got NO output at all (hung before test started), generate fallback XML
+                    if len(output) == 0 or output.strip() == b"":
+                        log("No output captured - test hung before producing any results. Generating fallback XML.")
+                        fallback_xml = (
+                            f'<Test TestFile="UNKNOWN" RandomSeed="UNKNOWN" BuggifyEnabled="UNKNOWN" '
+                            f'FaultInjectionEnabled="UNKNOWN" JoshuaSeed="{seed}" Ok="0" '
+                            f'CrashReason="HungBeforeExecution">'
+                            f'<JoshuaMessage Severity="40" Message="Test timed out without producing any output. '
+                            f'Container may have hung during tarball unpacking or before test command execution. '
+                            f'Seed={seed}"/></Test>'
+                        ).encode('utf-8')
+                        output = fallback_xml
+                        log(f"Generated fallback XML ({len(output)} bytes)")
+
                     retcode = -2
-                    output = b""
                     break
                 getFileHandle().write(".")
 

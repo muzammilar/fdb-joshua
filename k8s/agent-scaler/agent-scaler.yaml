@@ -19,7 +19,9 @@ spec:
       containers:
       - env:
         - name: MAX_JOBS
-          value: "5"
+          value: "100"
+        - name: MAX_NEW_JOBS
+          value: "100"
         - name: CHECK_DELAY
           value: "10"
         image: foundationdb/agent-scaler:latest
