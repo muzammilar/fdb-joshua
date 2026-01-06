@@ -134,10 +134,13 @@ def trim_jobqueue(cutoff_date, remove_jobs=True):
 
 
 def log(outputText, newline=True):
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    message = f"[{timestamp}] {outputText}"
     return (
-        print(outputText, file=getFileHandle())
+        print(message, file=getFileHandle())
         if newline
-        else getFileHandle().write(outputText)
+        else getFileHandle().write(message)
     )
 
 
@@ -811,6 +814,12 @@ def agent(
 
     start = time.time()  # Used later to limit time agent runs.
     idle_start = start  # Used to determine idle duration
+    agent_timeout_approaching = False  # Flag to indicate graceful shutdown mode
+    
+    if agent_timeout:
+        log(f"Joshua agent started with timeout: {agent_timeout} seconds")
+    else:
+        log("Joshua agent started with no timeout")
 
     try:
         # Run all of the sanity tests first, and if any of them fail, exit.
@@ -948,12 +957,25 @@ def agent(
                     agent_idle_timeout is not None
                     and now - idle_start >= agent_idle_timeout
                 ):
-                    log("Agent timed out")
+                    log(f"Agent timed out after {now - start:.1f} seconds (no active ensembles)")
                     break
                 else:
                     continue
 
             assert ensembles_can_run
+
+            # Check if agent timeout is approaching - if so, finish gracefully
+            now = time.time()
+            if agent_timeout is not None and (now - start) >= agent_timeout:
+                if not agent_timeout_approaching:
+                    agent_timeout_approaching = True
+                    log(f"Agent timeout reached after {now - start:.1f} seconds - will exit gracefully after current job completes")
+                break
+
+            # Warn when timeout is approaching (5 minutes before)
+            if agent_timeout is not None and not agent_timeout_approaching and (now - start) >= (agent_timeout - 300):
+                log(f"Agent timeout approaching in {agent_timeout - (now - start):.0f} seconds")
+                agent_timeout_approaching = True
 
             # Pick an ensemble to run. Weight by amount of time spent on each one.
 
@@ -971,12 +993,15 @@ def agent(
                     chosen_ensemble = ensemble
                     break
             assert chosen_ensemble is not None
+            
+            log(f"Starting job from ensemble: {chosen_ensemble}")
             retcode = run_ensemble(
                 chosen_ensemble,
                 save_on,
                 work_dir=work_dir,
                 timeout_command_timeout=timeout_command_timeout,
             )
+            log(f"Completed job from ensemble: {chosen_ensemble}, result: {retcode}")
             # Exit agent gracefully via stopfile on probable zombie process
             if retcode == -1 or retcode == -2:
                 if stop_file is None:
@@ -1098,13 +1123,20 @@ if __name__ == "__main__":
     )
     arguments = parser.parse_args()
 
-    if arguments.apoptosis is not None:
+    # Check for AGENT_TIMEOUT environment variable first, then command line argument
+    agent_timeout_env = os.environ.get("AGENT_TIMEOUT", None)
+    if agent_timeout_env is not None:
+        agent_timeout = int(agent_timeout_env)
+        log(f"Using AGENT_TIMEOUT from environment: {agent_timeout} seconds")
+    elif arguments.apoptosis is not None:
         # Timeout is equal to the given argument with a random fuzz up to 50% of the argument.
         # This is added to avoid having 500+ Mesos boxes suddenly crying out in terror and
         # being suddenly silenced.
         agent_timeout = int(arguments.apoptosis * (1 + 0.5 * random.random()))
+        log(f"Using --apoptosis timeout: {agent_timeout} seconds")
     else:
         agent_timeout = None
+        log("No agent timeout configured - agent will run indefinitely")
 
     joshua_model.open(arguments.cluster_file, arguments.dir_path)
     agent_init(arguments.work_dir)
