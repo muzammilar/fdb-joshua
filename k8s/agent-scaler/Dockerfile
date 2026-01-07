@@ -1,4 +1,4 @@
-FROM rockylinux:9.3
+FROM rockylinux/rockylinux:9.6
 ARG AGENT_TAG=joshua-agent:latest
 
 RUN dnf -y update && \

@@ -1,4 +1,4 @@
-FROM rockylinux:9.3
+FROM rockylinux/rockylinux:9.6
 # this is joshua-agent
 
 WORKDIR /tmp
