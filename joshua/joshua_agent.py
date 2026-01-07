@@ -134,7 +134,6 @@ def trim_jobqueue(cutoff_date, remove_jobs=True):
 
 
 def log(outputText, newline=True):
-    import datetime
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     message = f"[{timestamp}] {outputText}"
     return (
