@@ -92,7 +92,7 @@ while true; do
               echo "=== Skipping protected failed job: $job === (AGENT_NAME: ${AGENT_NAME})"
               continue
           fi
-          echo "=== Job $job Completed (1/1) - deleting from get jobs === (AGENT_NAME: ${AGENT_NAME})"
+          echo "$(date -Iseconds) === Job $job Completed (1/1) - deleting from get jobs === (AGENT_NAME: ${AGENT_NAME})"
           kubectl delete job "$job" -n "${namespace}"
       done
 
@@ -112,7 +112,7 @@ while true; do
                   echo "=== Skipping protected failed job: $job_prefix_from_pod === (AGENT_NAME: ${AGENT_NAME})"
                   continue
               fi
-              echo "=== Deleting Job based on pod status: $job_prefix_from_pod === (AGENT_NAME: ${AGENT_NAME})"
+              echo "$(date -Iseconds) === Deleting Job based on pod status: $job_prefix_from_pod === (AGENT_NAME: ${AGENT_NAME})"
               kubectl delete job "$job_prefix_from_pod" -n "${namespace}" --ignore-not-found=true
             else
               # This case can occur if AGENT_NAME is unusual (e.g., 'foo-bar' and a pod 'foo-bar-baz-TIMESTAMP-...' exists)
@@ -154,12 +154,12 @@ while true; do
     else
         num_ensembles=$(python3 /tools/ensemble_count.py -C "${FDB_CLUSTER_FILE}")
     fi
-    echo "${num_ensembles} ensembles in the queue (global)"
+    echo "$(date -Iseconds) ${num_ensembles} ensembles in the queue (global)"
 
     # Calculate the number of all active Joshua jobs (any type) -- 'jobs' are effectively pod instances (a pod instance usually does batch_size joshua runs and then completes).
     # Active jobs are those with .status.active > 0 (i.e., pods are running/pending but not yet succeeded/failed overall for the job)
     num_all_active_joshua_jobs=$(kubectl get jobs -n "${namespace}" -o 'jsonpath={range .items[?(@.status.active > 0)]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -Ec '^joshua-(rhel9-)?agent-[0-9]+(-[0-9]+)?$')
-    echo "${num_all_active_joshua_jobs} total active joshua jobs of any type that are running. Global max_jobs: ${max_jobs}."
+    echo "$(date -Iseconds) ${num_all_active_joshua_jobs} total active joshua jobs of any type that are running. Global max_jobs: ${max_jobs}."
 
     new_jobs=0 # Initialize jobs to start this cycle for this scaler
 
@@ -242,7 +242,7 @@ while true; do
         fi
     fi
     # Standardized log message based on new_jobs calculated for this iteration for this agent type
-    echo "${new_jobs} jobs of type ${AGENT_NAME} were targeted for starting in this iteration."
+    echo "$(date -Iseconds) ${new_jobs} jobs of type ${AGENT_NAME} were targeted for starting in this iteration."
 
     # Use consistent check delay for all queue sizes
     adaptive_delay=${check_delay}
