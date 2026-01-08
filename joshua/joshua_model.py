@@ -680,8 +680,17 @@ def should_run_ensemble(tr: fdb.Transaction, ensemble_id: str) -> bool:
     """
     props = _get_ensemble_properties(tr, ensemble_id)
     started = props.get("started", 0)
+    passed = props.get("pass", 0)
+    failed = props.get("fail", 0)
+    completed = passed + failed
     max_runs = props.get("max_runs", 0)
+    
     # max_runs == 0 means run forever
+    if max_runs > 0 and completed >= max_runs:
+        # Ensemble has reached its completion target, no more work needed
+        return False
+    
+    # Check if we're approaching the limit to avoid overshooting
     if max_runs > 0 and started >= max_runs:
         current_time = time.time()
         max_seed = None
@@ -713,7 +722,7 @@ def should_run_ensemble(tr: fdb.Transaction, ensemble_id: str) -> bool:
             return True
         return False
     else:
-        # max_runs == 0 or started < max_runs
+        # max_runs == 0 or started < max_runs and completed < max_runs
         return True
 
 
