@@ -3,7 +3,7 @@
 # Usage: joshua_remote_cli.sh --context <context> [--joshua-dir <dir>] [--rhel9] <command> [args...]
 
 CONTEXT="${JOSHUA_CONTEXT:-}"
-JOSHUA_CHECKOUT="${JOSHUA_DIR:-/Users/stack/checkouts/fdb/fdb-joshua}"
+JOSHUA_CHECKOUT="${JOSHUA_DIR:-$HOME/checkouts/fdb/fdb-joshua}"
 SCALER_TYPE="${JOSHUA_SCALER:-regular}"
 
 # Parse named arguments
