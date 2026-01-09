@@ -1,9 +1,18 @@
 #!/bin/bash
-# joshua_remote_cli.sh - Run joshua commands against EKS cluster
+# joshua_in_scaler.sh - Run joshua commands against EKS cluster
+#
+# This script enables Joshua CLI access when Joshua is not installed locally on remote pod.
+# It uses the agent-scaler pod as a proxy: copies your local joshua.py source
+# to the pod (which has database access) and executes commands there, remotely.
+#
 # Usage: joshua_remote_cli.sh --context <context> [--joshua-dir <dir>] [--rhel9] <command> [args...]
 
+# Environment variables with expected values:
+# JOSHUA_CONTEXT: kubectl context name or EKS ARN (e.g., "arn:aws:eks:us-west-2:123456789:cluster/my-cluster")
+# JOSHUA_SCALER: scaler type - "regular" (default) or "rhel9"
 CONTEXT="${JOSHUA_CONTEXT:-}"
-JOSHUA_CHECKOUT="${JOSHUA_DIR:-$HOME/checkouts/fdb/fdb-joshua}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JOSHUA_CHECKOUT="${JOSHUA_DIR:-$SCRIPT_DIR}"
 SCALER_TYPE="${JOSHUA_SCALER:-regular}"
 
 # Parse named arguments
@@ -11,10 +20,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --context|-c)
             CONTEXT="$2"
-            shift 2
-            ;;
-        --joshua-dir|-j)
-            JOSHUA_CHECKOUT="$2"
             shift 2
             ;;
         --rhel9)
@@ -29,7 +34,7 @@ done
 
 if [ -z "$CONTEXT" ]; then
     echo "Error: --context is required (or set JOSHUA_CONTEXT env var)"
-    echo "Usage: $0 --context <k8s-context> [--joshua-dir <fdb-joshua-checkout>] [--rhel9] <command> [args...]"
+    echo "Usage: $0 --context <k8s-context> [--rhel9] <command> [args...]"
     exit 1
 fi
 
@@ -40,9 +45,9 @@ if [ -z "$JOSHUA_PY" ]; then
 fi
 
 if [ "$SCALER_TYPE" = "rhel9" ]; then
-    SCALER_POD=$(kubectl --context "$CONTEXT" get pods | grep agent-scaler | grep rhel9 | head -1 | awk '{print $1}')
+    SCALER_POD=$(kubectl --context "${CONTEXT}" get pods -l app=agent-scaler-rhel9 -o jsonpath='{.items[0].metadata.name}')
 else
-    SCALER_POD=$(kubectl --context "$CONTEXT" get pods | grep agent-scaler | grep -v rhel9 | head -1 | awk '{print $1}')
+    SCALER_POD=$(kubectl --context "${CONTEXT}" get pods -l app=agent-scaler -o jsonpath='{.items[0].metadata.name}')
 fi
 
 if [ -z "$SCALER_POD" ]; then
@@ -50,7 +55,7 @@ if [ -z "$SCALER_POD" ]; then
     exit 1
 fi
 
-# Copy joshua.py with patched imports
+# Copy joshua.py with patched imports (remove lxml dependency, fix relative imports for pod environment)
 sed -e 's/import lxml.etree as le/le = None/' \
     -e 's/from \. import joshua_model/import joshua_model/' \
     "$JOSHUA_PY" | \
