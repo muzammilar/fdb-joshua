@@ -33,13 +33,9 @@ if [ -z "$CONTEXT" ]; then
     exit 1
 fi
 
-# Handle both fdb-joshua checkout dir or joshua subdir
-if [ -f "$JOSHUA_CHECKOUT/joshua/joshua.py" ]; then
-    JOSHUA_PY="$JOSHUA_CHECKOUT/joshua/joshua.py"
-elif [ -f "$JOSHUA_CHECKOUT/joshua.py" ]; then
-    JOSHUA_PY="$JOSHUA_CHECKOUT/joshua.py"
-else
-    echo "Error: Could not find joshua.py in $JOSHUA_CHECKOUT or $JOSHUA_CHECKOUT/joshua/"
+JOSHUA_PY=$(find ${JOSHUA_CHECKOUT} -name "joshua.py" -print)
+if [ -z "$JOSHUA_PY" ]; then
+    echo "Error: Could not find joshua.py in ${JOSHUA_CHECKOUT}"
     exit 1
 fi
 
